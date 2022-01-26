@@ -1,10 +1,10 @@
-%define BUFLEN 1<<13		; io template
+%define BUFLEN 1<<20	; io template
 
 section .bss
 	rbuf resb BUFLEN	; io template
 	wbuf resb BUFLEN	; io template
-	rbufcnt resw 1		; io template
-	wbufcnt resw 1		; io template
+	rbufcnt resd 1		; io template
+	wbufcnt resd 1		; io template
 
 section .data
 
@@ -24,69 +24,58 @@ main:
 	xor rax, rax
 	ret
 
-func_end:
-	leave
-	ret
-
-exit_:
-	xor rbx, rbx
-	mov rax, 1
-	int 0x80
-
 ; ========================
 ; IO template starts here
 ;
-; should have:
-;
-;	%define BUFLEN 2048 ;any 2^n
-; section .bss
-;	rbuf resb BUFLEN
-;	wbuf resb BUFLEN
-;	rbufcnt resw 1
-;	wbufcnt resw 1
-;
-; call writeall before exit to clear buffer
+; call writeall before exit to clear write buffer
+; writeall does NOT preserve registers
 ;
 readone:
 	push rbp
 	mov rbp, rsp
-	xor WORD[rbufcnt], 0
+	xor DWORD[rbufcnt], 0
 	jz ro1_
-	test WORD[rbufcnt], BUFLEN
+	test DWORD[rbufcnt], BUFLEN
 	jz ro2_
 	ro1_:
+		push rbx
+		push rcx
+		push rdx
 		mov rax, 3 		; read
 		mov rbx, 0		; stdin
 		mov rcx, rbuf	; char *
 		mov rdx, BUFLEN	; size_t
 		int 0x80
-		mov WORD[rbufcnt], 0
+		and DWORD[rbufcnt], 0
+		pop rdx
+		pop rcx
+		pop rbx
 	ro2_:
+	push rsi
 	xor rsi, rsi
-	mov si, [rbufcnt]
+	mov esi, [rbufcnt]
 	mov al, [rbuf + rsi]
-	inc WORD[rbufcnt]
+	inc DWORD[rbufcnt]
+	pop rsi
 	leave
 	ret
 
 readstr: ; rbx <- char *
 	push rbp
 	mov rbp, rsp
-	push rbx
+	push rax
 	rs1_:
 		call readone
 		cmp al, 0x20
 		jle rs1_
 	rs2_:
-		pop rbx
-		mov BYTE[rbx], al
+		mov [rbx], al
 		inc rbx
-		push rbx
 		call readone
 		cmp al, 0x20
 		jg rs2_
-	pop rbx
-	mov BYTE[rbx], 0
+	and BYTE[rbx], 0
+	pop rax
 	leave
 	ret
 
@@ -99,27 +88,25 @@ readint: ; return rax
 		jle ri1_
 	push rax
 	push QWORD 0
-	cmp al, 0x2D		; '-'
+	cmp al, 0x2D			; '-'
 	jg ri2_
 		call readone
 	ri2_:
-		pop rbx
-		mov rdx, rbx
-		shl rbx, 3		; *=8
-		shl rdx, 1		; *= 2
-		add rbx, rdx	; 8X + 2X = 10X
-		and rax, 0xF	; ascii -> int
-		add rbx, rax
 		push rbx
+		mov rbx, [rsp+8]
+		shl QWORD[rsp+8], 3	; *= 8
+		shl rbx, 1			; *= 2
+		add [rsp+8], rbx	; 8X + 2X = 10X
+		and rax, 0xF		; ascii -> int
+		add [rsp+8], rax
+		pop rbx
 		call readone
 		cmp al, 0x20
 		jg ri2_
 	pop rax
-	pop rbx
-	cmp bl, 0x2D		; '-'
+	cmp BYTE[rsp], 0x2D		; '-'
 	jne ri3_
-		not rax
-		inc rax
+		neg rax
 	ri3_:
 	leave
 	ret
@@ -128,62 +115,91 @@ writeall:
 	push rbp
 	mov rbp, rsp
 	xor rdx, rdx
-	mov rax, 4		; write
-	mov rbx, 1		; stdout
-	mov rcx, wbuf	; char *
-	mov dx, WORD[wbufcnt]	; size_t
+	mov rax, 4			; write
+	mov rbx, 1			; stdout
+	mov rcx, wbuf		; char *
+	mov edx, [wbufcnt]	; size_t
 	int 0x80
-	mov WORD[wbufcnt], 0
+	and DWORD[wbufcnt], 0
 	leave
 	ret
 
-writeone: ; rbx <- char
+writeone: ; bl <- char
 	push rbp
 	mov rbp, rsp
-	push rbx
-	test WORD[wbufcnt], BUFLEN
+	test DWORD[wbufcnt], BUFLEN
 	jz wo_
+		push rax
+		push rbx
+		push rcx
+		push rdx
 		mov rax, 4		; write
 		mov rbx, 1		; stdout
 		mov rcx, wbuf	; char *
 		mov rdx, BUFLEN	; size_t
 		int 0x80
-		mov WORD[wbufcnt], 0
+		and DWORD[wbufcnt], 0
+		pop rdx
+		pop rcx
+		pop rbx
+		pop rax
 	wo_:
+	push rsi
 	xor rsi, rsi
-	mov si, [wbufcnt]
-	pop rbx
+	mov esi, [wbufcnt]
 	mov [wbuf + rsi], bl
-	inc WORD[wbufcnt]
+	inc DWORD[wbufcnt]
+	pop rsi
 	leave
 	ret
 
 writestr: ; rbx <- char *
 	push rbp
 	mov rbp, rsp
+	push rbx
 	ws_:
-		push rbx
+		mov rbx, [rsp]
 		mov bl, [rbx]
 		call writeone
-		pop rbx
-		inc rbx
-		xor BYTE[rbx], 0
+		inc QWORD[rsp]
+		xor bl, 0
 		jnz ws_
+	pop rbx
+	leave
+	ret
+
+writespace:
+	push rbp
+	mov rbp, rsp
+	push rbx
+	mov bl, 0x20
+	call writeone
+	pop rbx
+	leave
+	ret
+
+writecrlf:
+	push rbp
+	mov rbp, rsp
+	push rbx
+	mov bl, 0x0A
+	call writeone
+	pop rbx
 	leave
 	ret
 
 writeint: ; rbx <- int
 	push rbp
 	mov rbp, rsp
+	push rbx
+	push rax
+	push rdx
 	push QWORD -1
 	mov rax, rbx
 	mov rbx, 10
-	xor cl, cl
 	xor rax, 0
 	jns wi1_
-		xor cl, 1
-		not rax
-		inc rax
+		neg rax
 	wi1_:
 		xor rdx, rdx
 		div rbx
@@ -191,8 +207,8 @@ writeint: ; rbx <- int
 		push rdx
 		xor rax, 0
 		jnz wi1_
-	test cl, 1
-	jz wi2_
+	cmp QWORD[rbp-8], 0
+	jge wi2_
 		mov bl, 0x2D	; '-'
 		call writeone
 	wi2_:
@@ -202,6 +218,9 @@ writeint: ; rbx <- int
 		call writeone
 	jmp wi2_
 	wi3_:
+	pop rdx
+	pop rax
+	pop rbx
 	leave
 	ret
 

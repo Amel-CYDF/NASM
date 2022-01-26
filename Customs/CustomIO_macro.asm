@@ -1,15 +1,8 @@
 ; ========================
 ; IO template starts here
 ;
-; should have:
-;
-; section .bss
-;	rbuf resb BUFLEN
-;	wbuf resb BUFLEN
-;	rbufcnt resd 1
-;	wbufcnt resd 1
-;
-; call writeall before exit to clear buffer
+; call writeall before exit to clear write buffer
+; writeall does NOT preserve registers
 ;
 %define BUFLEN 1<<20
 %macro readone 2	; %1: rbuf, %2: rbufcnt
@@ -169,12 +162,3 @@ main:
 	pop rbp
 	xor rax, rax
 	ret
-
-func_end:
-	leave
-	ret
-
-exit_:
-	xor rbx, rbx
-	mov rax, 1
-	int 0x80
