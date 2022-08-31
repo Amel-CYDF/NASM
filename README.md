@@ -1,7 +1,7 @@
-# NASM x64
+# NASM x64 (백준에 내기 위한 Assembly(64bit) 정리)
 
 ### Custom IO
-- tested at [boj.kr/10818](boj.kr/10818 "boj.kr/10818") (최소, 최대)
+- tested at [최소, 최대](boj.kr/10818 "boj.kr/10818") 외 다수
 
 - 몇 가지 관찰들:
   - buffer의 크기는 못해도 1024가 되어야 좋다.
@@ -17,7 +17,7 @@
   - 따라서 Macro 버전 파일에는 잘못된 점이 있을 수 있고, 수정 안하고 있음
 
 ### Heap
-- tested at [최소 힙](boj.kr/1927 "최소 힙")
+- tested at [최소 힙](boj.kr/1927 "boj.kr/1927")
 
 ### Quick Sort
-- tested at [수 정렬하기 2](boj.kr/2751 "수 정렬하기 2")
+- tested at [수 정렬하기 2](boj.kr/2751 "boj.kr/2751")

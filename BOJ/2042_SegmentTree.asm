@@ -7,6 +7,7 @@
 	ret
 %endmacro
 %macro exit_ 0
+	call writeall
 	xor rbx, rbx
 	mov rax, 1
 	int 0x80
@@ -37,7 +38,10 @@ section .bss
 	rbufcnt resw 1		; io template
 	wbufcnt resw 1		; io template
 	n resq 1
+	m resq 1
 	arr resq MAXN+5
+	segtree resq 1<<21 	; for segment tree
+	segsiz resq 1			; size of segment tree
 
 section .data
 
@@ -45,12 +49,130 @@ section .text
 	global main
 
 
+seginit:	; rbx <- arr, rcx <- size N
+	prologue
+	mov QWORD[segsiz], 1
+	L_seginit:
+		shl QWORD[segsiz], 1
+		cmp QWORD[segsiz], rcx
+		jl L_seginit
+	push rsi
+	push rdi
+	push rcx
+	mov rcx, [segsiz]
+	lea rdi, [segtree + rcx*8]
+	xor rax, rax
+	CLD
+	rep stosq
+	pop rcx
+	mov rsi, rbx
+	mov rdi, [segsiz]
+	lea rdi, [segtree + rdi*8]
+	CLD
+	rep movsq
+	mov rcx, [segsiz]
+	dec rcx
+	L_seginit_2:
+		shl rcx, 1
+		mov rbx, [segtree + rcx*8]
+		add rbx, [segtree + rcx*8 + 8]
+		mov [segtree + rcx*4], rbx
+		shr rcx, 1
+	loop L_seginit_2
+	pop rdi
+	pop rsi
+	epilogue
+
+segupd:		; rbx <- pos, rcx <- val to chg
+	prologue
+	xor rbx, [segsiz]
+	mov [segtree + rbx*8], rcx
+	shr rbx, 1
+	L_segupd:
+		shl rbx, 1
+		mov rcx, [segtree + rbx*8]
+		add rcx, [segtree + rbx*8 + 8]
+		mov [segtree + rbx*4], rcx
+		shr rbx, 2
+		test rbx, rbx
+		jnz L_segupd
+	epilogue
+
+segquery:	; range [rbx, rcx], 0-index
+	prologue
+	xor rbx, [segsiz]
+	xor rcx, [segsiz]
+	xor rax, rax
+	L_segqeury:
+		test bl, 1
+		jz L_segqeury_lf
+			add rax, [segtree + rbx*8]
+			inc rbx
+			jmp L_segqeury_fin
+		L_segqeury_lf:
+		test cl, 1
+		jnz L_segqeury_rg
+			add rax, [segtree + rcx*8]
+			dec rcx
+			jmp L_segqeury_fin
+		L_segqeury_rg:
+			shr rbx, 1
+			shr rcx, 1
+		L_segqeury_fin:
+		cmp rbx, rcx
+		jle L_segqeury
+	epilogue
 
 main:
 	push rbp
 	mov rbp, rsp
 
-	;
+	call readint
+	mov [n], rax
+	call readint
+	mov [m], rax
+	call readint
+	add [m], rax
+
+	mov rcx, [n]
+	mov rsi, arr
+	L1:
+		call readint
+		mov [rsi], rax
+		add rsi, 8
+	loop L1
+
+	mov rbx, arr
+	mov rcx, [n]
+	call seginit
+
+	mov rcx, [m]
+	L2:
+		push rcx
+		call readint
+		xor al, 2
+		jz L2_sum
+			call readint
+			mov rbx, rax
+			call readint
+			mov rcx, rax
+			sub rbx, 1
+			call segupd
+			jmp L2_fin
+		L2_sum:
+			call readint
+			dec rax
+			mov rbx, rax
+			call readint
+			dec rax
+			mov rcx, rax
+			call segquery
+			mov rbx, rax
+			call writeint
+			call writecrlf
+		L2_fin:
+		pop rcx
+	loop L2
 
 	call writeall
 	xor rax, rax
